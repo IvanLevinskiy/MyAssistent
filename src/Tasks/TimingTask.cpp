@@ -1,17 +1,21 @@
 #include "Tasks\TimingTask.h"
 
 //Конструктор класса Valve
-TimingTask::TimingTask(uint16_t  startTime, uint16_t  dutration_min)
+TimingTask::TimingTask(uint16_t  startTime, uint16_t  dutration_min, int period)
 {
         this->StartTime = startTime;
         this->Dutration_min = dutration_min;
 
+         this->period = period;
 }
 
 //Обновление данных. Метод вызывается в loop
 //Управляет логикой
-bool TimingTask::Update(uint16_t currentTime)
+bool TimingTask::Update(tm* timeInfo, bool forceBit)
 {
+      //Получение количества микут с начала суток
+      currentTime = timeInfo->tm_hour * 60 + timeInfo->tm_min;
+
       //Переменная для временного хранения результата состояния пина,
       //к которому полключается клапан
       bool tempStateValve = false;
@@ -31,21 +35,31 @@ bool TimingTask::Update(uint16_t currentTime)
           tempStateValve = temp_1 || temp_2;
       }
 
+      //Проверка периодичности (один раз в несколько суток)
+      tempStateValve &= (timeInfo->tm_yday % period) == 0;
+
+      //Накладываем форс-бит
+      tempStateValve |= forceBit;
+
+      //Если сменился статус
       if(StartProgramm == false && tempStateValve == true)
       {
         old_millis = millis();
+        addative = 0;
       }
 
 
       //Передаем состояние пина реле
       StartProgramm = tempStateValve;
 
+      //Если задача не активна - ВЫХОД
       if(StartProgramm == false)
       {
         State = false;
         return false;
       }
 
+      
       if(millis() >= old_millis + addative)
       {
          State = !State;

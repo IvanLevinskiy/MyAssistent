@@ -6,11 +6,10 @@
 #include "timerMinim.h"
 #include <ArduinoOTA.h>
 #include <Tasks\TimingTask.h>
+#include <Commands.h>
 
-
+//Адрес PCF8574 (реле Kincony KC868-A8)
 #define I2C_RELAYS_ADR 0x24
-
-
 
 //SDA = 4;
 //SCL = 5;
@@ -19,16 +18,22 @@ PCF8574 pcf8574( I2C_RELAYS_ADR, 4, 5);
 /*
   Задачи, выполняемые по времени
 */
-//Полив в 08:00
-TimingTask Task0 = TimingTask(480, 1);
 
-//Полив в 20:00
-TimingTask Task1 = TimingTask(1160, 1);
+//Полив в 20:00 один раз в 3 суток
+TimingTask Task0 = TimingTask(1160, 1, 3);
 
+//Состояние Force бита 
+//(получаю из TCP) 
+bool r0_forceBit = false;
 
+//NTP сервер + настройки
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 9000;
 const int   daylightOffset_sec = 9000;
+
+//Структура с текущим
+//временем, синхронизированным с NTP сервером
+struct tm timeinfo;
 
 /*
   Вывод текущего времени в Serial
@@ -49,7 +54,6 @@ void printLocalTime()
 */
 uint GetCurrentMinutes()
 {
-  struct tm timeinfo;
   getLocalTime(&timeinfo);
   return timeinfo.tm_hour * 60 + timeinfo.tm_min;
 }
@@ -159,17 +163,34 @@ void setup()
   //init and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
+  delay(100);
+  StartWifiServer();
+
   // UDP-клиент на указанном порту
   //udp.begin(udp_port);
 }
 
 bool Relay0 = false;
 
+//Получаем бит из слова
+bool GetBit(uint8_t _value, int _bit)
+{
+  uint8_t res = _value;
+  res &= (uint8_t)(1<<_bit);
+
+  //возвращаем результат
+  if(res == 0) return false;
+  return true;
+}
+
+
+
 /*
   Бесконечный цикл
 */
 void loop() 
 {
+    //Проверка подключения к сети WiFi
     bool wifi_connected = (WiFi.status() == WL_CONNECTED);
     
     //Проверяем обновление по воздуху
@@ -178,15 +199,18 @@ void loop()
     {
         //Проверка обновления прошивки по воздуху
         ArduinoOTA.handle();
+        ReadWifiServer();
     }
 
+    
     uint currenttime = GetCurrentMinutes();
 
-    //Relay0 =  Task0.Update(currenttime);
-    Relay0 |= Task1.Update(currenttime);
+    //Получение состояния Force бита
+    r0_forceBit = GetBit(ByteArray[0], 0);
+
+    //Проверка условий для включения реле (кратковременного)
+    Relay0 = Task0.Update(&timeinfo, r0_forceBit);
 
     //Переносим переменнные в регистр
     pcf8574.digitalWrite(P7, !Relay0);
-    printLocalTime();
-    delay(500);
 }

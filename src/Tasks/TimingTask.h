@@ -26,11 +26,11 @@ class TimingTask
 
     //Конструктор класса
     //_pin - пин, к которому подключен клапан
-    TimingTask(uint16_t  startTime, uint16_t  dutration_min);
+    TimingTask(uint16_t  startTime, uint16_t  dutration_min, int period);
 
     //Обновление данных. Метод вызывается в loop
     //Управляет логикой
-    bool Update(uint16_t currentTime);
+    bool Update(tm* timeInfo, bool forceBit);
 
 
    private:
@@ -42,6 +42,11 @@ class TimingTask
     uint32_t old_millis = 0;
 
     uint32_t addative = 3000;
+
+    //Количество минут
+    int currentTime = 0;
+
+    int period = 1;
          
 };
 
